@@ -8,5 +8,4 @@ dependencies = [
   "langchain-openai>=0.3",
   "langgraph>=0.2",
   "langsmith>=0.1",
-  "bonsai-owlready2 @ git+https://github.com/bonsai/owlready2.git",
 ]
