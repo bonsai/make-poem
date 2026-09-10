@@ -3,7 +3,7 @@
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
-from owlready2 import Thing, get_ontology
+from owlready2 import DataProperty, Thing, get_ontology
 
 
 class PoemState(TypedDict, total=False):
@@ -31,14 +31,14 @@ def build_semantic_ontology():
         class SemanticWord(Thing):
             pass
 
-        class has_mood(Thing >> str):
-            pass
+        class has_mood(DataProperty):
+            range = [str]
 
-        class has_scene(Thing >> str):
-            pass
+        class has_scene(DataProperty):
+            range = [str]
 
-        class has_theme(Thing >> str):
-            pass
+        class has_theme(DataProperty):
+            range = [str]
 
         shippori = SemanticWord("shippori")
         shippori.has_mood = ["大人", "しっとり"]
