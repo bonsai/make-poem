@@ -1,7 +1,10 @@
-"""Minimal LangGraph PoC for Semantics × Phonetics lyric generation."""
+"""LangChain + LangGraph PoC for Semantics × Phonetics lyric generation."""
 
+import os
 from typing import TypedDict
 
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
 
@@ -22,17 +25,14 @@ PHONETIC_FIXTURES = {
 
 
 def phonetics(state: PoemState) -> PoemState:
-    """Generate candidates; replace with rhyme-finder integration later."""
     return {"candidates": PHONETIC_FIXTURES.get(state["seed"], [])}
 
 
 def semantics(state: PoemState) -> PoemState:
-    """Score meaning/context independently from phonetic similarity."""
     context = state.get("context", {})
     mood = set(context.get("mood", []))
     scene = set(context.get("scene", []))
     ranked = []
-
     for candidate in state.get("candidates", []):
         word = candidate["word"]
         semantic_score = 0.5
@@ -43,33 +43,44 @@ def semantics(state: PoemState) -> PoemState:
         elif word == "にっこり":
             semantic_score = 0.95 if {"笑顔", "楽しさ"} & mood else 0.65
             context_score = 0.95 if {"出会い", "笑顔"} & scene else 0.55
-
-        score = (
+        poetic_score = (
             candidate["phonetic_score"] * 0.4
             + semantic_score * 0.3
             + context_score * 0.3
         )
-        ranked.append({
-            **candidate,
-            "semantic_score": semantic_score,
-            "context_score": context_score,
-            "poetic_score": round(score, 4),
-        })
-
+        ranked.append({**candidate, "semantic_score": semantic_score,
+                       "context_score": context_score,
+                       "poetic_score": round(poetic_score, 4)})
     ranked.sort(key=lambda x: x["poetic_score"], reverse=True)
     return {"ranked": ranked}
 
 
 def compose(state: PoemState) -> PoemState:
+    """Use LangChain for final lyric composition when a model is configured."""
     top = state["ranked"][0]
-    seed = state["seed"]
-    return {
-        "poem": (
-            f"{seed}、{top['word']}。\n"
-            "音が似ているだけじゃない、\n"
-            "いまの景色に似合う言葉。"
-        )
-    }
+    if not os.getenv("OPENAI_API_KEY") and not os.getenv("LM_STUDIO_API_KEY"):
+        return {"poem": f"{state['seed']}、{top['word']}。\n音が似ているだけじゃない、\nいまの景色に似合う言葉。"}
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "あなたは日本語の作詞家。音韻と意味の交差から短い歌詞を作る。説明せず詩だけを書く。"),
+        ("human", "種語: {seed}\n文脈: {context}\n選択語: {word}\n音韻: {phonetic}\n意味: {semantic}\n文脈適合: {context_score}"),
+    ])
+    model = ChatOpenAI(
+        model=os.getenv("POEM_MODEL", "gpt-4o-mini"),
+        base_url=os.getenv("OPENAI_BASE_URL") or os.getenv("LM_STUDIO_BASE_URL"),
+        api_key=os.getenv("OPENAI_API_KEY") or os.getenv("LM_STUDIO_API_KEY") or "lm-studio",
+        temperature=0.8,
+    )
+    chain = prompt | model
+    response = chain.invoke({
+        "seed": state["seed"],
+        "context": state.get("context", {}),
+        "word": top["word"],
+        "phonetic": top["phonetic_score"],
+        "semantic": top["semantic_score"],
+        "context_score": top["context_score"],
+    })
+    return {"poem": response.content}
 
 
 def build_graph():
@@ -85,13 +96,9 @@ def build_graph():
 
 
 if __name__ == "__main__":
-    app = build_graph()
-    result = app.invoke({
+    result = build_graph().invoke({
         "seed": "日暮里",
-        "context": {
-            "scene": ["夜", "酒", "静けさ"],
-            "mood": ["大人", "しっとり"],
-        },
+        "context": {"scene": ["夜", "酒", "静けさ"], "mood": ["大人", "しっとり"]},
     })
     print("=== ranked candidates ===")
     for candidate in result["ranked"]:
