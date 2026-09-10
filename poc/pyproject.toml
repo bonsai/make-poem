@@ -1,0 +1,13 @@
+[project]
+name = "make-poem-poc"
+version = "0.1.0"
+description = "Python PoC for lyric generation with Semantics × Phonetics using LangGraph and LangSmith"
+requires-python = ">=3.11"
+dependencies = [
+  "langgraph>=0.2",
+  "langchain-core>=0.3",
+  "langsmith>=0.1",
+]
+
+[tool.uv]
+dev-dependencies = []
