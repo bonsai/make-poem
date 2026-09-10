@@ -1,6 +1,6 @@
 [project]
 name = "make-poem-poc"
-version = "0.2.0"
+version = "0.3.0"
 description = "Python PoC for lyric generation with Semantics × Phonetics"
 requires-python = ">=3.11"
 dependencies = [
@@ -8,4 +8,5 @@ dependencies = [
   "langchain-openai>=0.3",
   "langgraph>=0.2",
   "langsmith>=0.1",
+  "owlready2>=0.51",
 ]
