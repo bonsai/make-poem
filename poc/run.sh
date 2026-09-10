@@ -12,4 +12,4 @@ fi
 
 "$VENV/bin/python" -m pip install --upgrade pip
 "$VENV/bin/python" -m pip install -r requirements.txt
-"$VENV/bin/python" workflow.py
+"$VENV/bin/python" workflow.py "$@"
