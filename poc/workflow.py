@@ -2,6 +2,8 @@
 
 import json
 import os
+import sys
+from urllib.error import URLError
 from urllib.request import Request, urlopen
 from typing import Any, TypedDict
 
@@ -25,6 +27,8 @@ CRITERIA = {
     "novelty": "deterministic",
     "style": "llm",
 }
+
+RESULT_FILE = "result.json"
 
 
 def build_semantic_ontology():
@@ -148,13 +152,23 @@ def build_workflow():
     return graph.compile()
 
 
+def save_result(result: PoemState, path: str = RESULT_FILE) -> None:
+    """Save the complete PoC result as UTF-8 JSON."""
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(result, file, ensure_ascii=False, indent=2)
+        file.write("\n")
+
+
 if __name__ == "__main__":
-    result = build_workflow().invoke({
-        "seed": "日暮里",
-        "context": {"scene": ["夜", "酒", "静けさ"], "mood": ["大人", "しっとり"]},
-    })
-    print("=== ranked ===")
-    for candidate in result["ranked"]:
-        print(candidate)
-    print("=== trace ===")
-    print(result["trace"])
+    try:
+        result = build_workflow().invoke({
+            "seed": "日暮里",
+            "context": {"scene": ["夜", "酒", "静けさ"], "mood": ["大人", "しっとり"]},
+        })
+        save_result(result)
+    except (OSError, URLError, TimeoutError, ValueError, KeyError) as exc:
+        print(f"エラー：PoCの実行に失敗しました。{exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    except Exception as exc:
+        print(f"エラー：予期しない問題が発生しました。{exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
