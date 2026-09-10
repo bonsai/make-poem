@@ -18,16 +18,17 @@ compose
 poem
 ```
 
-LangSmith は環境変数による LangChain tracing を利用する。API key がない状態でも PoC のローカル実行はできる。
+LangSmith は LangChain の tracing を利用する。API key がなくてもローカル PoC は実行できる。
 
 ## Run
 
 ```bash
 cd poc
-uv run python main.py
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py
 ```
-
-または通常の venv で `pip install -e .` 相当の環境を作って `python main.py`。
 
 ## LangSmith
 
