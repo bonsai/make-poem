@@ -123,7 +123,8 @@ def save_html(result: PoemState) -> None:
 
 if __name__ == "__main__":
     try:
-        result = build_workflow().invoke({"seed": "日暮里", "context": {"scene": ["夜", "酒", "静けさ"], "mood": ["大人", "しっとり"]}})
+        seed = sys.argv[1] if len(sys.argv) > 1 else "日暮里"
+        result = build_workflow().invoke({"seed": seed, "context": {"scene": ["夜", "酒", "静けさ"], "mood": ["大人", "しっとり"]}})
         save_result(result)
         save_html(result)
     except (OSError, URLError, TimeoutError, ValueError, KeyError) as exc:
