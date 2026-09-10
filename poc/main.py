@@ -1,10 +1,4 @@
-"""Minimal LangGraph PoC for Semantics × Phonetics lyric generation.
-
-The graph deliberately keeps phonetic candidate generation separate from
-semantic/contextual selection. LangSmith tracing is enabled automatically by
-LangChain when LANGSMITH_TRACING=true and the usual LANGSMITH_* environment
-variables are configured.
-"""
+"""Minimal LangGraph PoC for Semantics × Phonetics lyric generation."""
 
 from typing import TypedDict
 
@@ -19,7 +13,6 @@ class PoemState(TypedDict, total=False):
     poem: str
 
 
-# Tiny fixture for the first PoC. Later this node will call rhyme-finder.
 PHONETIC_FIXTURES = {
     "日暮里": [
         {"word": "しっぽり", "reading": "しっぽり", "phonetic_score": 0.92},
@@ -29,21 +22,21 @@ PHONETIC_FIXTURES = {
 
 
 def phonetics(state: PoemState) -> PoemState:
-    candidates = PHONETIC_FIXTURES.get(state["seed"], [])
-    return {"candidates": candidates}
+    """Generate candidates; replace with rhyme-finder integration later."""
+    return {"candidates": PHONETIC_FIXTURES.get(state["seed"], [])}
 
 
 def semantics(state: PoemState) -> PoemState:
+    """Score meaning/context independently from phonetic similarity."""
     context = state.get("context", {})
     mood = set(context.get("mood", []))
     scene = set(context.get("scene", []))
-
     ranked = []
+
     for candidate in state.get("candidates", []):
         word = candidate["word"]
         semantic_score = 0.5
         context_score = 0.5
-
         if word == "しっぽり":
             semantic_score = 0.95 if {"大人", "しっとり"} & mood else 0.65
             context_score = 0.95 if {"夜", "酒", "静けさ"} & scene else 0.55
@@ -70,8 +63,13 @@ def semantics(state: PoemState) -> PoemState:
 def compose(state: PoemState) -> PoemState:
     top = state["ranked"][0]
     seed = state["seed"]
-    poem = f"{seed}、{top['word']}。\n音が似ているだけじゃない、\nいまの景色に似合う言葉。"
-    return {"poem": poem}
+    return {
+        "poem": (
+            f"{seed}、{top['word']}。\n"
+            "音が似ているだけじゃない、\n"
+            "いまの景色に似合う言葉。"
+        )
+    }
 
 
 def build_graph():
@@ -95,7 +93,6 @@ if __name__ == "__main__":
             "mood": ["大人", "しっとり"],
         },
     })
-
     print("=== ranked candidates ===")
     for candidate in result["ranked"]:
         print(candidate)
