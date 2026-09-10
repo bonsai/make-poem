@@ -1,5 +1,8 @@
 """PoC workflow: rhyme-finder → SEM (Owlready2) → PHO → ranking."""
 
+import json
+import os
+from urllib.request import Request, urlopen
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -67,14 +70,41 @@ def semantic_score(word: str, context: dict[str, Any], ontology) -> tuple[float,
 
 
 def rhyme_candidates(state: PoemState) -> PoemState:
-    """Adapter boundary for rhyme-finder; fixture is used for the first PoC."""
+    """Call rhyme-finder when configured; keep the fixture for offline PoC runs."""
+    base_url = os.getenv("RHYME_FINDER_URL")
+    if not base_url:
+        return {"candidates": _fixture_candidates(state["seed"]),
+                "trace": {"rhyme_finder": "fixture"}}
+
+    url = f"{base_url.rstrip('/')}/v1/rhyme"
+    payload = json.dumps({"text": state["seed"], "mode": "aggressive", "limit": 20}).encode()
+    request = Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    with urlopen(request, timeout=10) as response:
+        body = json.load(response)
+
+    candidates = []
+    for item in body.get("candidates", []):
+        word = item.get("text")
+        if not word:
+            continue
+        candidates.append({
+            "word": word,
+            "reading": item.get("reading", word),
+            "phonetic_score": float(item.get("phonetic", item.get("score", 0.0))),
+            "rhythm_score": float(item.get("rhythm", 0.0)),
+            "position_score": float(item.get("position", 0.0)),
+        })
+    return {"candidates": candidates, "trace": {"rhyme_finder": url}}
+
+
+def _fixture_candidates(seed: str) -> list[dict[str, Any]]:
     fixtures = {
         "日暮里": [
             {"word": "しっぽり", "reading": "しっぽり", "phonetic_score": 0.92},
             {"word": "にっこり", "reading": "にっこり", "phonetic_score": 0.88},
         ]
     }
-    return {"candidates": fixtures.get(state["seed"], [])}
+    return fixtures.get(seed, [])
 
 
 def score_candidates(state: PoemState) -> PoemState:
@@ -87,7 +117,7 @@ def score_candidates(state: PoemState) -> PoemState:
             "phonetic": candidate["phonetic_score"],
             "semantic": semantic,
             "context": semantic,
-            "rhythm": 0.90,
+            "rhythm": candidate.get("rhythm_score", 0.90),
             "novelty": 0.80,
         }
         ranked.append({
@@ -97,7 +127,7 @@ def score_candidates(state: PoemState) -> PoemState:
             "score": round(sum(vector.values()) / len(vector), 4),
         })
     ranked.sort(key=lambda item: item["score"], reverse=True)
-    return {"ranked": ranked, "trace": {"semantics": "owlready2"}}
+    return {"ranked": ranked, "trace": {**state.get("trace", {}), "semantics": "owlready2"}}
 
 
 def llm_delegation(state: PoemState) -> PoemState:
