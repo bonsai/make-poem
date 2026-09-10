@@ -1,8 +1,9 @@
-"""PoC workflow: rhyme-finder → LangGraph → LangChain → LangSmith."""
+"""PoC workflow: rhyme-finder → SEM (Owlready2) → PHO → ranking."""
 
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
+from owlready2 import Thing, get_ontology
 
 
 class PoemState(TypedDict, total=False):
@@ -23,6 +24,48 @@ CRITERIA = {
 }
 
 
+def build_semantic_ontology():
+    """Build the minimal SEM ontology used by the PoC."""
+    onto = get_ontology("http://bonsai.local/make-poem-sem.owl")
+    with onto:
+        class SemanticWord(Thing):
+            pass
+
+        class has_mood(Thing >> str):
+            pass
+
+        class has_scene(Thing >> str):
+            pass
+
+        class has_theme(Thing >> str):
+            pass
+
+        shippori = SemanticWord("shippori")
+        shippori.has_mood = ["大人", "しっとり"]
+        shippori.has_scene = ["夜", "酒", "静けさ"]
+        shippori.has_theme = ["夜の酒"]
+
+        nikkori = SemanticWord("nikkori")
+        nikkori.has_mood = ["笑顔", "楽しさ"]
+        nikkori.has_scene = ["出会い", "笑顔"]
+        nikkori.has_theme = ["楽しい時間"]
+    return onto
+
+
+def semantic_score(word: str, context: dict[str, Any], ontology) -> tuple[float, list[str]]:
+    """Score a candidate against SEM concepts stored in Owlready2."""
+    lookup = {"しっぽり": "shippori", "にっこり": "nikkori"}
+    individual = ontology.search_one(iri=f"*#{lookup.get(word, word)}")
+    if individual is None:
+        return 0.5, []
+
+    requested = set(context.get("mood", [])) | set(context.get("scene", []))
+    known = set(getattr(individual, "has_mood", [])) | set(getattr(individual, "has_scene", []))
+    matches = sorted(requested & known)
+    score = 0.5 if not requested else min(1.0, 0.5 + 0.45 * len(matches) / len(requested))
+    return score, matches
+
+
 def rhyme_candidates(state: PoemState) -> PoemState:
     """Adapter boundary for rhyme-finder; fixture is used for the first PoC."""
     fixtures = {
@@ -36,36 +79,31 @@ def rhyme_candidates(state: PoemState) -> PoemState:
 
 def score_candidates(state: PoemState) -> PoemState:
     context = state.get("context", {})
-    mood = set(context.get("mood", []))
-    scene = set(context.get("scene", []))
+    ontology = build_semantic_ontology()
     ranked = []
     for candidate in state.get("candidates", []):
-        word = candidate["word"]
-        semantic = 0.5
-        context_score = 0.5
-        if word == "しっぽり":
-            semantic = 0.95 if {"大人", "しっとり"} & mood else 0.65
-            context_score = 0.95 if {"夜", "酒", "静けさ"} & scene else 0.55
-        elif word == "にっこり":
-            semantic = 0.95 if {"笑顔", "楽しさ"} & mood else 0.65
-            context_score = 0.95 if {"出会い", "笑顔"} & scene else 0.55
+        semantic, semantic_matches = semantic_score(candidate["word"], context, ontology)
         vector = {
             "phonetic": candidate["phonetic_score"],
             "semantic": semantic,
-            "context": context_score,
+            "context": semantic,
             "rhythm": 0.90,
             "novelty": 0.80,
         }
-        ranked.append({**candidate, "score_vector": vector,
-                       "score": round(sum(vector.values()) / len(vector), 4)})
-    ranked.sort(key=lambda x: x["score"], reverse=True)
-    return {"ranked": ranked}
+        ranked.append({
+            **candidate,
+            "score_vector": vector,
+            "semantic_matches": semantic_matches,
+            "score": round(sum(vector.values()) / len(vector), 4),
+        })
+    ranked.sort(key=lambda item: item["score"], reverse=True)
+    return {"ranked": ranked, "trace": {"semantics": "owlready2"}}
 
 
 def llm_delegation(state: PoemState) -> PoemState:
     """Only criteria configured as ``llm`` are delegated to LangChain."""
-    delegated = [k for k, v in CRITERIA.items() if v == "llm"]
-    return {"trace": {"delegated_criteria": delegated}}
+    delegated = [key for key, value in CRITERIA.items() if value == "llm"]
+    return {"trace": {**state.get("trace", {}), "delegated_criteria": delegated}}
 
 
 def build_workflow():
@@ -85,5 +123,8 @@ if __name__ == "__main__":
         "seed": "日暮里",
         "context": {"scene": ["夜", "酒", "静けさ"], "mood": ["大人", "しっとり"]},
     })
-    print(result["ranked"])
+    print("=== ranked ===")
+    for candidate in result["ranked"]:
+        print(candidate)
+    print("=== trace ===")
     print(result["trace"])
